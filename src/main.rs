@@ -23,7 +23,7 @@ pub struct Buju {
     // 所有滑块信息：(类型, 横坐标, 纵坐标)
     pub blocks: Vec<(u32, u32, u32)>,
     // 棋盘信息，0表示空白，非0数字代表滑块的类型
-    pub grid: [[u8; 6]; 6],
+    pub grid: [[u16; 6]; 6],
     // 父局面在全局列表中的索引
     pub father: Option<usize>,
     // 当前局面的状态
@@ -150,15 +150,54 @@ fn generate_children(index: usize, current: &Buju) -> Vec<Buju> {
     children
 }
 
-// 根据 blocks 信息重建 grid，确保每个滑块在 grid 上占据相应位置
-fn update_grid(blocks: &[(u32, u32, u32)]) -> [[u8; 6]; 6] {
-    // 这里需要根据具体滑块的尺寸信息重建棋盘
-    // 简化示例：将所有位置置 0，然后将每个滑块标记为其类型
-    let mut grid = [[0u8; 6]; 6];
-    for &(typ, x, y) in blocks.iter() {
-        // 这里只标记滑块左上角位置，实际应标记整个块所占据的格子
-        grid[y as usize][x as usize] = typ as u8;
+/// 根据滑块的信息返回该滑块的尺寸 (宽, 高)
+fn block_size(block: &(u32, u32, u32)) -> (u32, u32) {
+    let (typ, _x, _y) = *block;
+    match typ {
+        1 => (2, 1),
+        2 => (2, 1),
+        3 => (1, 2),
+        4 => (3, 1),
+        5 => (1, 3),
+        _ => (0, 0),
     }
+}
+
+/// 根据 blocks 信息重建棋盘 grid，
+/// 将每个滑块在棋盘上占用的格子标记为该滑块的类型，
+/// 其余位置置为 0
+fn update_grid(blocks: &[(u32, u32, u32)]) -> [[u16; 6]; 6] {
+    // 初始化全部置 0 的棋盘
+    let mut grid = [[0u16; 6]; 6];
+    let mut count = 0u16;
+    // 遍历每个滑块，根据其起始位置和尺寸，标记其占据的格子
+    for &(typ, x, y) in blocks.iter() {
+        let (w, h) = block_size(&(typ, x, y));
+        let tid = typ as u16 * 100 + count;
+        count += 1;
+        // 对于横向滑块，从 (x, y) 开始，横向延伸 w 个格子，纵向延伸 h 个格子
+        for j in 0..h {
+            for i in 0..w {
+                let grid_x = (x + i) as usize;
+                let grid_y = (y + j) as usize;
+                if grid_x < 6 && grid_y < 6 {
+                    grid[grid_y][grid_x] = tid;
+                } else {
+                    // 若出现越界情况，说明该局面本身就不合法，
+                    // 这里可以根据需要进行处理（例如打印警告或者直接 panic）
+                    eprintln!(
+                        "警告：滑块类型 {} 放置位置 ({},{}) 尺寸 ({},{}) 越界",
+                        typ, x, y, w, h
+                    );
+                }
+            }
+        }
+    }
+    println!("=================");
+    for g in &grid {
+        println!("{:03?}", g);
+    }
+    println!("=================");
     grid
 }
 
