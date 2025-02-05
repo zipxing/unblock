@@ -74,22 +74,86 @@ fn is_solution(buju: &Buju) -> bool {
     false
 }
 
-// 根据当前局面生成所有可能的子局面
+/// 根据当前局面生成所有可能的子局面
+///
+/// 对于每个块，根据其类型决定移动方向：
+/// - 横向块（typ 1,2,4）：尝试向左和向右连续移动多个步长，
+/// - 纵向块（typ 3,5）：尝试向上和向下连续移动多个步长。
+///
+/// 对于每个移动方向，逐步尝试步长 1,2,3,...，
+/// 直到遇到边界或者目标位置有其他块阻挡。
+///
+/// 为了判断是否可以移动，我们先“清除”当前块在棋盘上的占据（视为自由），
+/// 然后检测新位置所占的所有格子是否为空。
 fn generate_children(index: usize, current: &Buju) -> Vec<Buju> {
     let mut children = Vec::new();
 
-    // 这里遍历所有滑块，根据滑块类型（横向或纵向）、当前位置，
-    // 尝试往所有合法方向移动一个单位，并判断移动后是否与其他块重叠。
-    // 下面仅给出伪代码，实际需要实现具体规则：
-    for (block_idx, &(typ, x, y)) in current.blocks.iter().enumerate() {
-        // 根据类型区分横向（假设类型 1 为目标及其他横向滑块）和纵向
-        if typ == 1 {
-            // 横向滑块只能左右移动
-            // 试着左移
-            if x > 0 && current.grid[y as usize][(x - 1) as usize] == 0 {
-                // 创建新的局面，更新 blocks 和 grid
+    // 当前局面的棋盘信息
+    let grid = current.grid;
+
+    // 遍历每个滑块
+    for (block_idx, &block) in current.blocks.iter().enumerate() {
+        let (typ, x, y) = block;
+        let (w, h) = block_size(&block);
+
+        // 根据类型判断允许的移动方向：
+        // 如果是横向块：左右；如果是纵向块：上下
+        let directions: Vec<(i32, i32)> = match typ {
+            1 | 2 | 4 => vec![(-1, 0), (1, 0)], // 横向：左和右
+            3 | 5 => vec![(0, -1), (0, 1)],       // 纵向：上和下
+            _ => vec![],
+        };
+
+        // 对每个方向，尝试连续移动多个步长
+        for (dx, dy) in directions.iter() {
+            // 从步长 1 开始，一直尝试到超出边界或遇阻
+            for step in 1..6 {
+                // 计算新位置（注意：当前 x,y 为 u32，此处转换为 i32 计算更方便）
+                let new_x = x as i32 + dx * step;
+                let new_y = y as i32 + dy * step;
+
+                // 检查新位置是否超出棋盘边界：
+                // 新位置的所有格子必须在 0..6 内，新位置右边界 new_x+w-1 < 6，新位置下边界 new_y+h-1 < 6
+                if new_x < 0 || new_y < 0 || (new_x + w as i32) > 6 || (new_y + h as i32) > 6 {
+                    break; // 超出边界，后续更大步长也不可能合法
+                }
+
+                // 为检测移动合法性，构造一个“临时”的棋盘，
+                // 将当前局面的 grid 克隆，并把当前块在原位置的占据置 0（视为可通行）
+                let mut temp_grid = grid;
+                for j in 0..h {
+                    for i in 0..w {
+                        let ox = (x + i) as usize;
+                        let oy = (y + j) as usize;
+                        temp_grid[oy][ox] = 0;
+                    }
+                }
+
+                // 检查新位置的所有格子是否为空
+                let mut can_move = true;
+                for j in 0..h {
+                    for i in 0..w {
+                        let check_x = (new_x as u32 + i) as usize;
+                        let check_y = (new_y as u32 + j) as usize;
+                        if temp_grid[check_y][check_x] != 0 {
+                            can_move = false;
+                            break;
+                        }
+                    }
+                    if !can_move {
+                        break;
+                    }
+                }
+
+                if !can_move {
+                    // 如果当前步长不合法，则同方向更大步长也不可能合法，故退出循环
+                    break;
+                }
+
+                // 如果新位置合法，则生成一个新的局面
                 let mut new_blocks = current.blocks.clone();
-                new_blocks[block_idx].1 = x - 1;
+                // 更新当前正在移动的块的位置
+                new_blocks[block_idx] = (typ, new_x as u32, new_y as u32);
                 let new_grid = update_grid(&new_blocks);
                 let child = Buju {
                     blocks: new_blocks,
@@ -97,52 +161,9 @@ fn generate_children(index: usize, current: &Buju) -> Vec<Buju> {
                     father: Some(index),
                     state: CalcChildState::Waiting,
                 };
+
                 children.push(child);
-            }
-            // 试着右移
-            if x + 2 < 6 && current.grid[y as usize][(x + 2) as usize] == 0 {
-                let mut new_blocks = current.blocks.clone();
-                new_blocks[block_idx].1 = x + 1;
-                let new_grid = update_grid(&new_blocks);
-                let child = Buju {
-                    blocks: new_blocks,
-                    grid: new_grid,
-                    father: Some(index),
-                    state: CalcChildState::Waiting,
-                };
-                children.push(child);
-            }
-        } else {
-            // 假设其他类型均为纵向（或其他横向）
-            // 根据类型判断移动方向，此处只给出伪代码
-            // 例如，若是纵向，则只能上下移动
-            // 上移
-            if y > 0 && current.grid[(y - 1) as usize][x as usize] == 0 {
-                let mut new_blocks = current.blocks.clone();
-                new_blocks[block_idx].2 = y - 1;
-                let new_grid = update_grid(&new_blocks);
-                let child = Buju {
-                    blocks: new_blocks,
-                    grid: new_grid,
-                    father: Some(index),
-                    state: CalcChildState::Waiting,
-                };
-                children.push(child);
-            }
-            // 下移（根据块高度判断是否越界）
-            // 这里假设每个块高度为 1 或更多，需要根据当前块的实际高度判断末尾位置
-            // 简化示例：下移一个单位
-            if y + 1 < 6 && current.grid[(y + 1) as usize][x as usize] == 0 {
-                let mut new_blocks = current.blocks.clone();
-                new_blocks[block_idx].2 = y + 1;
-                let new_grid = update_grid(&new_blocks);
-                let child = Buju {
-                    blocks: new_blocks,
-                    grid: new_grid,
-                    father: Some(index),
-                    state: CalcChildState::Waiting,
-                };
-                children.push(child);
+                // 注意：此处不退出循环，因为还可以尝试更长的移动步数
             }
         }
     }
@@ -169,12 +190,10 @@ fn block_size(block: &(u32, u32, u32)) -> (u32, u32) {
 fn update_grid(blocks: &[(u32, u32, u32)]) -> [[u16; 6]; 6] {
     // 初始化全部置 0 的棋盘
     let mut grid = [[0u16; 6]; 6];
-    let mut count = 0u16;
     // 遍历每个滑块，根据其起始位置和尺寸，标记其占据的格子
-    for &(typ, x, y) in blocks.iter() {
+    for (block_idx, &(typ, x, y)) in blocks.iter().enumerate() {
         let (w, h) = block_size(&(typ, x, y));
-        let tid = typ as u16 * 100 + count;
-        count += 1;
+        let tid = typ as u16 * 100 + block_idx as u16;
         // 对于横向滑块，从 (x, y) 开始，横向延伸 w 个格子，纵向延伸 h 个格子
         for j in 0..h {
             for i in 0..w {
