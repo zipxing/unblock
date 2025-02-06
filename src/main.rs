@@ -21,9 +21,9 @@ use std::hash::{Hash, Hasher};
 #[derive(Clone, Debug)]
 pub struct Buju {
     // 所有滑块信息：(类型, 横坐标, 纵坐标)
-    pub blocks: Vec<(u32, u32, u32)>,
-    // 棋盘信息，0表示空白，非0数字代表滑块的类型
-    pub grid: [[u16; 6]; 6],
+    pub blocks: Vec<(u8, u8, u8)>,
+    // 棋盘信息，0表示空白，非0数字代表滑块的id(从1开始)
+    pub grid: [[u8; 6]; 6],
     // 父局面在全局列表中的索引
     pub father: Option<usize>,
     // 当前局面的状态
@@ -108,7 +108,7 @@ fn generate_children(index: usize, current: &Buju) -> Vec<Buju> {
         for (dx, dy) in directions.iter() {
             // 从步长 1 开始，一直尝试到超出边界或遇阻
             for step in 1..6 {
-                // 计算新位置（注意：当前 x,y 为 u32，此处转换为 i32 计算更方便）
+                // 计算新位置（注意：当前 x,y 为 u8，此处转换为 i32 计算更方便）
                 let new_x = x as i32 + dx * step;
                 let new_y = y as i32 + dy * step;
 
@@ -133,8 +133,8 @@ fn generate_children(index: usize, current: &Buju) -> Vec<Buju> {
                 let mut can_move = true;
                 for j in 0..h {
                     for i in 0..w {
-                        let check_x = (new_x as u32 + i) as usize;
-                        let check_y = (new_y as u32 + j) as usize;
+                        let check_x = (new_x as u8 + i) as usize;
+                        let check_y = (new_y as u8 + j) as usize;
                         if temp_grid[check_y][check_x] != 0 {
                             can_move = false;
                             break;
@@ -153,7 +153,7 @@ fn generate_children(index: usize, current: &Buju) -> Vec<Buju> {
                 // 如果新位置合法，则生成一个新的局面
                 let mut new_blocks = current.blocks.clone();
                 // 更新当前正在移动的块的位置
-                new_blocks[block_idx] = (typ, new_x as u32, new_y as u32);
+                new_blocks[block_idx] = (typ, new_x as u8, new_y as u8);
                 let new_grid = update_grid(&new_blocks);
                 let child = Buju {
                     blocks: new_blocks,
@@ -172,7 +172,7 @@ fn generate_children(index: usize, current: &Buju) -> Vec<Buju> {
 }
 
 /// 根据滑块的信息返回该滑块的尺寸 (宽, 高)
-fn block_size(block: &(u32, u32, u32)) -> (u32, u32) {
+fn block_size(block: &(u8, u8, u8)) -> (u8, u8) {
     let (typ, _x, _y) = *block;
     match typ {
         1 => (2, 1),
@@ -187,13 +187,13 @@ fn block_size(block: &(u32, u32, u32)) -> (u32, u32) {
 /// 根据 blocks 信息重建棋盘 grid，
 /// 将每个滑块在棋盘上占用的格子标记为该滑块的类型，
 /// 其余位置置为 0
-fn update_grid(blocks: &[(u32, u32, u32)]) -> [[u16; 6]; 6] {
+fn update_grid(blocks: &[(u8, u8, u8)]) -> [[u8; 6]; 6] {
     // 初始化全部置 0 的棋盘
-    let mut grid = [[0u16; 6]; 6];
+    let mut grid = [[0u8; 6]; 6];
     // 遍历每个滑块，根据其起始位置和尺寸，标记其占据的格子
     for (block_idx, &(typ, x, y)) in blocks.iter().enumerate() {
         let (w, h) = block_size(&(typ, x, y));
-        let tid = typ as u16 * 100 + block_idx as u16;
+        let tid = (block_idx + 1) as u8;
         // 对于横向滑块，从 (x, y) 开始，横向延伸 w 个格子，纵向延伸 h 个格子
         for j in 0..h {
             for i in 0..w {
@@ -214,7 +214,7 @@ fn update_grid(blocks: &[(u32, u32, u32)]) -> [[u16; 6]; 6] {
     }
     println!("=================");
     for g in &grid {
-        println!("{:03?}", g);
+        println!("{:?}", g);
     }
     println!("=================");
     grid
