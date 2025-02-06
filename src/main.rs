@@ -338,8 +338,7 @@ fn main() {
 
     // 当解被找到时，通过 father 字段回溯整个解题过程
     let solution_index = {
-        let sol = solution_found.lock().unwrap();
-        sol.clone()
+        *solution_found.lock().unwrap()
     };
 
     if let Some(sol_idx) = solution_index {
