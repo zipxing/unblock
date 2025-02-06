@@ -299,14 +299,14 @@ fn main() {
                         // 锁定全局 BUJUMAP 进行检查
                         let mut add_new = false;
                         {
-                            let mut map = BUJUMAP.lock().unwrap();
+                            let map = BUJUMAP.lock().unwrap();
                             if !map.contains_key(&child) {
                                 add_new = true;
                             }
                         }
                         if add_new {
                             // 加入全局 BUJUS 和 BUJUMAP
-                            let mut buju_index = 0;
+                            let buju_index;
                             {
                                 let mut bujus = BUJUS.lock().unwrap();
                                 buju_index = bujus.len();
